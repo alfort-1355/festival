@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>沖縄工業高校マップ - 一般閲覧用</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; background: #f4f4f9; }
+        header { background: #2c3e50; color: white; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; z-index: 1000; }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .menu-toggle-btn { background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; padding: 0; line-height: 1; }
+        header h1 { margin: 0; font-size: 1.2rem; }
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: bold; background: #27ae60; }
+        .badge.offline { background: #e74c3c; }
+        
+        /* サイドメニュー（ドロワー）のスタイル */
+        #side-menu { position: fixed; top: 0; left: -280px; width: 280px; height: 100%; background: white; z-index: 3000; box-shadow: 2px 0 10px rgba(0,0,0,0.3); transition: left 0.3s ease; display: flex; flex-direction: column; }
+        .menu-header { background: #2c3e50; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .menu-header h2 { margin: 0; font-size: 1.1rem; }
+        .menu-close-btn { background: none; border: none; color: white; font-size: 1.4rem; cursor: pointer; }
+        .menu-body { padding: 15px; overflow-y: auto; flex-grow: 1; }
+        .menu-section-title { font-size: 0.9rem; font-weight: bold; color: #7f8c8d; margin-bottom: 8px; margin-top: 15px; }
+        .floor-buttons { display: flex; flex-direction: column; gap: 8px; }
+        .floor-btn { padding: 10px; border: 1px solid #3498db; background: white; color: #3498db; border-radius: 6px; cursor: pointer; text-align: center; font-weight: bold; font-size: 1rem; }
+        .floor-btn.active { background: #3498db; color: white; }
+        .menu-link-list { list-style: none; padding: 0; margin: 0; }
+        .menu-link-list li { margin-bottom: 10px; }
+        .menu-link-list a { color: #2c3e50; text-decoration: none; font-size: 1rem; display: block; padding: 8px; border-radius: 4px; background: #f8f9fa; }
+        .menu-link-list a:hover { background: #e9ecef; }
+        #menu-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2500; display: none; }
+
+        /* お知らせモーダルのスタイル */
+        #notice-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 90%; max-width: 400px; background: white; z-index: 4000; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: none; flex-direction: column; overflow: hidden; }
+        .notice-modal-header { background: #2c3e50; color: white; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; }
+        .notice-modal-header h3 { margin: 0; font-size: 1rem; }
+        .notice-modal-body { padding: 15px; max-height: 60vh; overflow-y: auto; }
+        .notice-item { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #eee; }
+        .notice-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .notice-time { font-size: 0.75rem; color: #e67e22; font-weight: bold; margin-bottom: 3px; }
+        .notice-text { font-size: 0.9rem; color: #333; line-height: 1.4; }
+        .notice-modal-footer { padding: 10px; background: #f8f9fa; text-align: right; }
+        .notice-close-btn { padding: 6px 15px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+        #modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3500; display: none; }
+
+        .controls { padding: 10px; background: white; z-index: 1000; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .search-box { display: flex; gap: 5px; margin-bottom: 10px; }
+        .search-box input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .search-box button { padding: 8px 15px; background: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .filter-buttons { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 5px; }
+        .filter-btn { white-space: nowrap; padding: 6px 12px; border: 1px solid #3498db; background: white; color: #3498db; border-radius: 20px; cursor: pointer; font-size: 0.9rem; }
+        .filter-btn.active { background: #3498db; color: white; }
+        #map { flex-grow: 1; width: 100%; background: #e0e0e0; }
+        .leaflet-image-layer { image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; }
+        .fab-container { position: absolute; bottom: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+        .fab { width: 50px; height: 50px; border-radius: 50%; background: #3498db; color: white; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.3); font-size: 22px; cursor: pointer; display: flex; justify-content: center; align-items: center; }
+        .custom-icon { text-align: center; line-height: 24px; font-weight: bold; border-radius: 50%; background: white; border: 2px solid #333; box-shadow: 1px 1px 3px rgba(0,0,0,0.5); }
+        .current-location-icon { background: #3498db; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(52, 152, 219, 0.8); animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(52, 152, 219, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(52, 152, 219, 0); } 100% { box-shadow: 0 0 0 0 rgba(52, 152, 219, 0); } }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <button class="menu-toggle-btn" onclick="toggleMenu()">☰</button>
+            <h1>沖工マップ</h1>
+        </div>
+        <div>
+            <span id="network-status" class="badge">オンライン</span>
+        </div>
+    </header>
+
+    <!-- サイドメニュー（ドロワー） -->
+    <div id="side-menu">
+        <div class="menu-header">
+            <h2>メニュー</h2>
+            <button class="menu-close-btn" onclick="toggleMenu()">✕</button>
+        </div>
+        <div class="menu-body">
+            <div class="menu-section-title">📍 階層切り替え</div>
+            <div class="floor-buttons">
+                <button class="floor-btn active" onclick="changeFloor(1, 'map.jpeg')">1F</button>
+                <button class="floor-btn" onclick="changeFloor(2, 'map2f.jpeg')">2F</button>
+                <button class="floor-btn" onclick="changeFloor(3, 'map3f.jpeg')">3F</button>
+                <button class="floor-btn" onclick="changeFloor(4, 'map4f.jpeg')">4F</button>
+                <button class="floor-btn" onclick="changeFloor(5, 'map5f.jpeg')">5F</button>
+            </div>
+
+            <div class="menu-section-title">ℹ️ 情報</div>
+            <ul class="menu-link-list">
+                <li><a href="#" onclick="showNoticeModal(); return false;">📢 お知らせ一覧</a></li>
+                <!-- お問い合わせや電話番号は、方針が決まったらここにリンクや番号を追加できます -->
+            </ul>
+        </div>
+    </div>
+    <div id="menu-overlay" onclick="toggleMenu()"></div>
+
+    <!-- お知らせポップアップ（モーダル） -->
+    <div id="modal-overlay" onclick="closeNoticeModal()"></div>
+    <div id="notice-modal">
+        <div class="notice-modal-header">
+            <h3>📢 管理者からのお知らせ</h3>
+            <button class="menu-close-btn" onclick="closeNoticeModal()" style="font-size: 1.2rem;">✕</button>
+        </div>
+        <div class="notice-modal-body" id="notice-list-container">
+            <!-- JavaScriptでここに日付・時間付きのお知らせが差し込まれます -->
+        </div>
+        <div class="notice-modal-footer">
+            <button class="notice-close-btn" onclick="closeNoticeModal()">閉じる</button>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="建物名、教室番号、出し物で検索...">
+            <button onclick="searchLocations()">検索</button>
+        </div>
+        <div class="filter-buttons">
+            <button class="filter-btn active" onclick="filterMap('all')">すべて</button>
+            <button class="filter-btn" onclick="filterMap('event')">出し物</button>
+            <button class="filter-btn" onclick="filterMap('toilet')">トイレ</button>
+            <button class="filter-btn" onclick="filterMap('facility')">施設・出入口</button>
+            <button class="filter-btn" onclick="filterMap('emergency')">救護・避難</button>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="fab-container">
+        <button class="fab" onclick="showCurrentGPSLocation()" title="現在地を表示">📍</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script>
+        // ==========================================
+        //  管理者からのお知らせデータ（ここで自由に書き換え可能です）
+        // ==========================================
+        const noticeData = [
+            {
+                time: "2026/11/01 10:42",
+                text: " お知らせ機能の追加"
+            }
+        ];
+
+        // ==========================================
+        //  マップデータ（index7-1.htmlの最新データを反映）
+        // ==========================================
+        const mapData = [{"id":1791430041117,"lat":1021,"lng":628,"type":"facility","name":"普通教室棟・第1管理棟","desc":"","floor":1},{"id":1791430049602,"lat":697,"lng":708,"type":"facility","name":"第2管理棟","desc":"","floor":1},{"id":1791430098596,"lat":789,"lng":164,"type":"facility","name":"電子機械科棟","desc":"","floor":1},{"id":1791430117545,"lat":1433,"lng":156,"type":"facility","name":"情報電子科棟","desc":"","floor":1},{"id":1791430127091,"lat":1281,"lng":1172,"type":"facility","name":"運動場","desc":"","floor":1},{"id":1791430136387,"lat":1437,"lng":628,"type":"facility","name":"体育館","desc":"","floor":1},{"id":1791430162852,"lat":560,"lng":379,"type":"facility","name":"工業化学科棟","desc":"","floor":1},{"id":1791430213443,"lat":344,"lng":515,"type":"facility","name":"工業化学科・理科・芸術棟","desc":"","floor":1},{"id":1791430232384,"lat":184,"lng":983,"type":"facility","name":"建築科棟","desc":"","floor":1},{"id":1791431000051,"lat":655,"lng":953,"type":"facility","name":"生活情報科棟","desc":"","floor":1},{"id":1791437291173,"lat":1081,"lng":436,"type":"emergency","name":"保健室","desc":"","floor":1},{"id":1791437342325,"lat":675,"lng":1202,"type":"facility","name":"テニスコート","desc":"","floor":1},{"id":1791437400550,"lat":640,"lng":1032,"type":"toilet","name":"トイレ","desc":"1F・2Fに男女用それぞれ","floor":1},{"id":1791437477477,"lat":1040,"lng":667,"type":"toilet","name":"トイレ","desc":"1Fに男女用それぞれ、3F・5Fに男子用、4Fに女子用があります","floor":1},{"id":1791437516805,"lat":1014,"lng":190,"type":"toilet","name":"トイレ","desc":"男子用","floor":1},{"id":1791437601986,"lat":542,"lng":226,"type":"toilet","name":"トイレ","desc":"2F・4Fに男女用それぞれ、3Fに男子用があります","floor":1},{"id":1791437622037,"lat":1360,"lng":713,"type":"toilet","name":"トイレ","desc":"男女用それぞれ","floor":1},{"id":1791437666965,"lat":365,"lng":575,"type":"toilet","name":"トイレ","desc":"1Fに男子用","floor":1},{"id":1791437721925,"lat":157,"lng":1116,"type":"toilet","name":"トイレ","desc":"1Fに男子用、2F・3Fに男女用それぞれ","floor":1},{"id":1791437780213,"lat":1766,"lng":322,"type":"toilet","name":"トイレ","desc":"男子用","floor":1},{"id":1791437897413,"lat":1427,"lng":256,"type":"toilet","name":"トイレ","desc":"1Fに男子用、2Fに男女用それぞれ、3Fに女子用","floor":1}];
+
+        const landmarkData = [{"id":"a1791430879843","name":"正門","gps":[26.214565,127.706426],"map":[111,663]},{"id":"a1791430923410","name":"新規アンカー","gps":[26.214907,127.706471],"map":[514,681]},{"id":"a1791431174355","name":"体育館","gps":[26.2152899,127.7062585],"map":[1407,616]},{"id":"a1791431208770","name":"新規アンカー","gps":[26.215695,127.705924],"map":[1455,381]},{"id":"a1791431241874","name":"新規アンカー","gps":[26.215603,127.705485],"map":[1297,117]},{"id":"a1791431347347","name":"新規アンカー","gps":[26.2151635,127.7062176],"map":[703,692]}];
+
+        // ==========================================
+        //  GPS表示可能範囲
+        // ==========================================
+        const BOUNDS = {
+            minLat: 26.214000,
+            maxLat: 26.216500,
+            minLng: 127.704500,
+            maxLng: 127.709000
+        };
+
+        function isLocationInBounds(lat, lng) {
+            return (lat >= BOUNDS.minLat && lat <= BOUNDS.maxLat &&
+                    lng >= BOUNDS.minLng && lng <= BOUNDS.maxLng);
+        }
+
+        // ==========================================
+        //  マップ初期化
+        // ==========================================
+        const imageBounds = [[0, 0], [2000, 1600]]; 
+        const map = L.map('map', {
+            crs: L.CRS.Simple,
+            minZoom: -2,
+            maxZoom: 4,
+            zoomControl: false
+        });
+        L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+        let currentImageOverlay = L.imageOverlay('map.jpeg', imageBounds).addTo(map);
+        map.fitBounds(imageBounds);
+
+        let markers = [];
+        let currentFloor = 1;
+        let currentFilterType = 'all';
+
+        // ==========================================
+        //  メニュー開閉 ＆ 階層切り替え ＆ お知らせ
+        // ==========================================
+        function toggleMenu() {
+            const menu = document.getElementById('side-menu');
+            const overlay = document.getElementById('menu-overlay');
+            if (menu.style.left === '0px') {
+                menu.style.left = '-280px';
+                overlay.style.display = 'none';
+            } else {
+                menu.style.left = '0px';
+                overlay.style.display = 'block';
+            }
+        }
+
+        function changeFloor(floorNum, imageName) {
+            currentFloor = floorNum;
+            
+            document.querySelectorAll('.floor-btn').forEach((btn, idx) => {
+                if (idx + 1 === floorNum) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            if (currentImageOverlay) {
+                map.removeLayer(currentImageOverlay);
+            }
+            currentImageOverlay = L.imageOverlay(imageName, imageBounds).addTo(map);
+
+            renderMarkers(currentFilterType);
+            toggleMenu();
+        }
+
+        function showNoticeModal() {
+            const container = document.getElementById('notice-list-container');
+            container.innerHTML = ""; // 一旦クリア
+
+            noticeData.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'notice-item';
+                div.innerHTML = `
+                    <div class="notice-time">🕒 ${item.time}</div>
+                    <div class="notice-text">${item.text}</div>
+                `;
+                container.appendChild(div);
+            });
+
+            document.getElementById('notice-modal').style.display = 'flex';
+            document.getElementById('modal-overlay').style.display = 'block';
+            toggleMenu(); // サイドメニューを閉じる
+        }
+
+        function closeNoticeModal() {
+            document.getElementById('notice-modal').style.display = 'none';
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        // ==========================================
+        //  マーカー描画・検索・フィルター
+        // ==========================================
+        function getIconStyle(type) {
+            switch(type) {
+                case 'toilet': return { color: '#3498db', icon: 'WC' };
+                case 'event': return { color: '#f1c40f', icon: '★' };
+                case 'emergency': return { color: '#e74c3c', icon: '＋' };
+                default: return { color: '#2ecc71', icon: '📍' };
+            }
+        }
+
+        function renderMarkers(filterType = 'all') {
+            currentFilterType = filterType;
+            markers.forEach(m => map.removeLayer(m));
+            markers = [];
+            
+            mapData.forEach(item => {
+                if (item.floor && item.floor !== currentFloor) return;
+                if (filterType !== 'all' && item.type !== filterType) return;
+
+                const style = getIconStyle(item.type);
+                const customIcon = L.divIcon({
+                    className: 'custom-icon',
+                    html: `<div style="color: ${style.color}; font-size: 16px;">${style.icon}</div>`,
+                    iconSize: [26, 26], iconAnchor: [13, 13]
+                });
+                const marker = L.marker([item.lat, item.lng], { icon: customIcon }).addTo(map);
+                const popup = `<b>${item.name}</b><br>${item.desc}`;
+                marker.bindPopup(popup);
+                markers.push(marker);
+            });
+        }
+
+        function filterMap(type) {
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            renderMarkers(type);
+        }
+
+        function searchLocations() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            if (!query) { renderMarkers('all'); return; }
+            const results = mapData.filter(i => i.name.toLowerCase().includes(query) || i.desc.toLowerCase().includes(query));
+            if (results.length > 0) {
+                renderMarkers('all');
+                map.setView([results[0].lat, results[0].lng], 2);
+            } else {
+                alert('該当する場所が見つかりませんでした。');
+            }
+        }
+
+        function calculateMapPositionFromGPS(userLat, userLng) {
+            if (landmarkData.length === 0) return { lat: 1000, lng: 800 }; 
+            let weightSum = 0, weightedY = 0, weightedX = 0;
+            for (const lm of landmarkData) {
+                const dLat = userLat - lm.gps[0];
+                const dLng = userLng - lm.gps[1];
+                const distSquared = (dLat * dLat) + (dLng * dLng);
+                if (distSquared === 0) return { lat: lm.map[0], lng: lm.map[1] };
+                const weight = 1 / distSquared;
+                weightSum += weight;
+                weightedY += lm.map[0] * weight;
+                weightedX += lm.map[1] * weight;
+            }
+            return { lat: weightedY / weightSum, lng: weightedX / weightSum };
+        }
+
+        let currentLocationMarker = null;
+
+        function showCurrentGPSLocation() {
+            if (!navigator.geolocation) { alert("GPS機能に対応していません。"); return; }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+
+                    if (!isLocationInBounds(userLat, userLng)) {
+                        alert(`現在位置が表示可能範囲（学校周辺）の外にあります。\n\n[取得したGPS座標]\n緯度: ${userLat}\n経度: ${userLng}`);
+                        return;
+                    }
+
+                    const mapPos = calculateMapPositionFromGPS(userLat, userLng);
+                    if (currentLocationMarker) map.removeLayer(currentLocationMarker);
+                    const gpsIcon = L.divIcon({
+                        className: 'current-location-icon',
+                        iconSize: [18, 18], iconAnchor: [9, 9]
+                    });
+                    currentLocationMarker = L.marker([mapPos.lat, mapPos.lng], { icon: gpsIcon }).addTo(map);
+                    currentLocationMarker.bindPopup("<b>あなたの現在地</b>").openPopup();
+                    map.setView([mapPos.lat, mapPos.lng], 1);
+                },
+                (error) => { alert("現在地を取得できませんでした。"); },
+                { enableHighAccuracy: true }
+            );
+        }
+
+        function updateStatus() {
+            const el = document.getElementById('network-status');
+            if (navigator.onLine) { el.textContent = "オンライン"; el.className = "badge"; } 
+            else { el.textContent = "オフライン"; el.className = "badge offline"; }
+        }
+        window.addEventListener('online', updateStatus);
+        window.addEventListener('offline', updateStatus);
+        updateStatus();
+        
+        renderMarkers('all');
+    </script>
+</body>
+</html>
